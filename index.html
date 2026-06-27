@@ -392,6 +392,10 @@
             font-family:'JetBrains Mono',monospace; font-size:10px;
             animation:pulse 2s infinite;
         }
+        @keyframes musicBounce {
+    0%   { transform: translateY(0) rotate(-10deg); }
+    100% { transform: translateY(-3px) rotate(10deg); }
+}
         @keyframes pulse{0%,100%{border-color:var(--zelda-green);}50%{border-color:var(--zelda-green-light);box-shadow:0 0 10px rgba(76,175,80,0.3);}}
         .home-nav { display:flex; justify-content:center; gap:22px; flex-wrap:wrap; margin-top:30px; }
         .home-nav-item {
@@ -691,6 +695,7 @@
             .taskbar-items{display:none;}
             .home-content .name{font-size:18px;}
         }
+        
     </style>
 </head>
 <body>
@@ -1828,6 +1833,276 @@ chibiClick = function() {
         chibiClicks = 0;
     }
 };
+// ╔══════════════════════════════════════════╗
+// ║         SISTEMA DE MÚSICA                ║
+// ╚══════════════════════════════════════════╝
+
+const BGM = {
+    // Troque pelos seus arquivos!
+    noite: new Audio('music/musica-noite.mp3'),
+    dia:   new Audio('music/musica-dia.mp3'),
+};
+
+// Configurações
+BGM.noite.loop   = true;
+BGM.dia.loop     = true;
+BGM.noite.volume = 0.3;
+BGM.dia.volume   = 0.3;
+
+let currentBGM   = BGM.noite;  // começa na noite
+let musicPlaying = false;
+let musicMuted   = false;
+let playerVisible = true;
+
+const MUSIC_TITLES = {
+    noite: '♫ Zelda - Ambient Night',  // ← mude p/ nome real
+    dia:   '♫ Zelda - Ocean Day',      // ← mude p/ nome real
+};
+
+// --- Tocar / Pausar ---
+function toggleMusic() {
+    const btn = document.getElementById('musicPlayBtn');
+    const icon = document.getElementById('musicIcon');
+
+    if (musicPlaying) {
+        currentBGM.pause();
+        musicPlaying = false;
+        btn.textContent = '▶';
+        icon.style.animationPlayState = 'paused';
+        icon.style.opacity = '0.4';
+    } else {
+        currentBGM.play().catch(() => {
+            console.warn('Autoplay bloqueado — clique na tela primeiro');
+        });
+        musicPlaying = true;
+        btn.textContent = '⏸';
+        icon.style.animationPlayState = 'running';
+        icon.style.opacity = '1';
+    }
+}
+
+// --- Volume ---
+function setMusicVolume(val) {
+    BGM.noite.volume = parseFloat(val);
+    BGM.dia.volume   = parseFloat(val);
+}
+
+// --- Mudo ---
+function muteMusicToggle() {
+    musicMuted = !musicMuted;
+    BGM.noite.muted = musicMuted;
+    BGM.dia.muted   = musicMuted;
+    document.getElementById('musicMuteBtn').textContent =
+        musicMuted ? '🔇' : '🔊';
+}
+
+// --- Trocar música ao mudar tema ---
+function switchBGM(mode) {
+    const next = mode === 'dia' ? BGM.dia : BGM.noite;
+    const titleEl = document.getElementById('musicTitle');
+    const modeEl  = document.getElementById('musicMode');
+
+    if (next === currentBGM) return;
+
+    // Fade out
+    const fadeOut = setInterval(() => {
+        if (currentBGM.volume > 0.02) {
+            currentBGM.volume -= 0.02;
+        } else {
+            currentBGM.pause();
+            currentBGM.currentTime = 0;
+            clearInterval(fadeOut);
+
+            // Troca
+            currentBGM = next;
+
+            // Atualiza título
+            titleEl.textContent = MUSIC_TITLES[mode];
+            modeEl.textContent  = mode;
+            modeEl.style.color  = mode === 'dia'
+                ? 'var(--p4-yellow)'
+                : 'var(--zelda-green-light)';
+
+            // Fade in
+            currentBGM.volume = 0;
+            if (musicPlaying) {
+                currentBGM.play().catch(() => {});
+                const fadeIn = setInterval(() => {
+                    const target = parseFloat(
+                        document.getElementById('musicVolume').value
+                    );
+                    if (currentBGM.volume < target - 0.02) {
+                        currentBGM.volume += 0.02;
+                    } else {
+                        currentBGM.volume = target;
+                        clearInterval(fadeIn);
+                    }
+                }, 50);
+            }
+        }
+    }, 50);
+}
+
+// --- Minimizar player ---
+function toggleMusicPlayer() {
+    playerVisible = !playerVisible;
+    document.getElementById('musicPlayer').style.display =
+        playerVisible ? 'flex' : 'none';
+    document.getElementById('musicMiniBtn').style.display =
+        playerVisible ? 'none' : 'block';
+}
+
+// --- Integrar com o toggle de tema ---
+const _toggleThemeOriginal = toggleTheme;
+toggleTheme = function() {
+    _toggleThemeOriginal();
+    // Troca a música junto com o tema
+    const mode = document.body.classList.contains('day-mode')
+        ? 'dia' : 'noite';
+    switchBGM(mode);
+};
+
+// --- Auto-play após primeira interação ---
+document.addEventListener('click', function startOnClick() {
+    if (!musicPlaying) {
+        currentBGM.play()
+            .then(() => {
+                musicPlaying = true;
+                document.getElementById('musicPlayBtn').textContent = '⏸';
+                const icon = document.getElementById('musicIcon');
+                icon.style.animationPlayState = 'running';
+            })
+            .catch(() => {});
+    }
+    document.removeEventListener('click', startOnClick);
+}, { once: true });
+
 </script>
+<!-- ===== MUSIC PLAYER ===== -->
+<div id="musicPlayer" style="
+    position: fixed;
+    bottom: 54px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    background: linear-gradient(135deg, rgba(26,31,46,0.97), rgba(20,25,40,0.97));
+    border: 2px solid var(--p4-yellow);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+    box-shadow: 0 0 20px rgba(255,215,0,0.1);
+    min-width: 280px;
+">
+    <!-- Ícone animado -->
+    <div id="musicIcon" style="
+        font-size: 16px;
+        animation: musicBounce 0.5s ease infinite alternate;
+        color: var(--p4-yellow);
+    ">♪</div>
+
+    <!-- Info da música -->
+    <div style="flex:1; overflow:hidden;">
+        <div id="musicTitle" style="
+            color: var(--p4-yellow);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 10px;
+            margin-bottom: 2px;
+        ">♫ Zelda - Ambient Night</div>
+        <div style="color: var(--text-secondary); font-size: 9px;">
+            modo: <span id="musicMode"
+                style="color: var(--zelda-green-light);">noite</span>
+        </div>
+    </div>
+
+    <!-- Controles -->
+    <div style="display:flex; align-items:center; gap:8px;">
+
+        <!-- Play/Pause -->
+        <button id="musicPlayBtn"
+            onclick="toggleMusic()"
+            style="
+                background: rgba(255,215,0,0.15);
+                border: 1px solid var(--p4-yellow);
+                color: var(--p4-yellow);
+                width: 28px; height: 28px;
+                cursor: pointer; font-size: 12px;
+                display: flex; align-items: center;
+                justify-content: center;
+                clip-path: polygon(0 0,calc(100% - 4px) 0,100% 4px,100% 100%,4px 100%,0 calc(100% - 4px));
+                transition: all 0.2s;
+            "
+            onmouseenter="this.style.background='rgba(255,215,0,0.3)'"
+            onmouseleave="this.style.background='rgba(255,215,0,0.15)'"
+        >▶</button>
+
+        <!-- Volume -->
+        <input type="range"
+            id="musicVolume"
+            min="0" max="1" step="0.05" value="0.3"
+            oninput="setMusicVolume(this.value)"
+            style="
+                width: 60px; height: 4px;
+                accent-color: var(--p4-yellow);
+                cursor: pointer;
+            "
+            title="Volume da música"
+        />
+
+        <!-- Mute -->
+        <button id="musicMuteBtn"
+            onclick="muteMusicToggle()"
+            style="
+                background: none; border: none;
+                color: var(--text-secondary);
+                cursor: pointer; font-size: 13px;
+                transition: all 0.2s; padding: 2px;
+            "
+            onmouseenter="this.style.color='var(--p4-yellow)'"
+            onmouseleave="this.style.color='var(--text-secondary)'"
+            title="Mudo"
+        >🔊</button>
+
+        <!-- Minimizar player -->
+        <button onclick="toggleMusicPlayer()"
+            style="
+                background: none; border: none;
+                color: var(--text-secondary);
+                cursor: pointer; font-size: 11px;
+                transition: all 0.2s; padding: 2px;
+            "
+            onmouseenter="this.style.color='var(--p4-yellow)'"
+            onmouseleave="this.style.color='var(--text-secondary)'"
+            title="Minimizar"
+        >▼</button>
+    </div>
+</div>
+
+<!-- Botão minimizado (aparece quando player some) -->
+<button id="musicMiniBtn"
+    onclick="toggleMusicPlayer()"
+    title="Abrir player"
+    style="
+        position: fixed; bottom: 54px; left: 50%;
+        transform: translateX(-50%);
+        z-index: 999;
+        background: rgba(26,31,46,0.97);
+        border: 2px solid var(--p4-yellow);
+        color: var(--p4-yellow);
+        font-size: 14px; padding: 4px 14px;
+        cursor: pointer; display: none;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        clip-path: polygon(0 0,calc(100% - 5px) 0,100% 5px,100% 100%,5px 100%,0 calc(100% - 5px));
+        transition: all 0.2s;
+    "
+>♪ player</button>
+
 </body>
 </html>
